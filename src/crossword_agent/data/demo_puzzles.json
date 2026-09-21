@@ -1,0 +1,194 @@
+[
+  {
+    "id": "59c92bb2-9fd8-4717-8a46-b0fc51f41700",
+    "title": "Four Corners I",
+    "split": "demo",
+    "solution": ["CAT#DOG", "ARE#ORE", "TEN#GEM", "#######", "SUN#PEN", "USE#ERA", "NET#NET"],
+    "across": {
+      "1": "House pet that may purr",
+      "4": "Canine companion",
+      "7": "Exist, plural",
+      "8": "Metal-bearing rock",
+      "9": "Number after nine",
+      "10": "A precious stone",
+      "11": "Star at the center of our solar system",
+      "14": "Writing instrument",
+      "17": "Employ",
+      "18": "A historical period",
+      "19": "What a fisherman casts",
+      "20": "Mesh used to catch something"
+    },
+    "down": {
+      "1": "Feline pet",
+      "2": "Exist, plural",
+      "3": "Number after nine",
+      "4": "Animal that barks",
+      "5": "Source of metal",
+      "6": "Jewel",
+      "11": "Daylight star",
+      "12": "Put to work",
+      "13": "A mesh trap",
+      "14": "Ink holder",
+      "15": "An age in history",
+      "16": "Internet, informally"
+    }
+  },
+  {
+    "id": "c332f031-f092-46e3-a636-d0fce9929cc8",
+    "title": "Four Corners II",
+    "split": "demo",
+    "solution": ["APE#RAM", "PEN#ARE", "END#MEN", "#######", "ICE#ONE", "CAR#NUT", "ERA#ETA"],
+    "across": {
+      "1": "Primate",
+      "4": "Male sheep",
+      "7": "Writing tool",
+      "8": "Exist, plural",
+      "9": "Conclusion",
+      "10": "Adult males",
+      "11": "Frozen water",
+      "14": "First positive integer",
+      "17": "Automobile",
+      "18": "Seed in a shell",
+      "19": "Historical period",
+      "20": "Greek letter after zeta"
+    },
+    "down": {
+      "1": "Great ape, for example",
+      "2": "Ink instrument",
+      "3": "Finish",
+      "4": "Computer memory, briefly",
+      "5": "Exist",
+      "6": "Males",
+      "11": "Something in a cold drink",
+      "12": "Vehicle",
+      "13": "Epoch",
+      "14": "Single",
+      "15": "Walnut, for example",
+      "16": "Seventh Greek letter"
+    }
+  },
+  {
+    "id": "12fba81e-8bbd-42df-9a99-eb12215b814f",
+    "title": "Four Corners III",
+    "split": "demo",
+    "solution": ["BAT#SIP", "ARE#IRE", "TEN#PEN", "#######", "MAP#RAN", "APE#ARE", "PEN#NET"],
+    "across": {
+      "1": "Flying mammal",
+      "4": "Drink in small amounts",
+      "7": "Exist, plural",
+      "8": "Anger",
+      "9": "Number after nine",
+      "10": "Writing instrument",
+      "11": "Cartographic drawing",
+      "14": "Moved quickly on foot",
+      "17": "Primate",
+      "18": "Exist, plural",
+      "19": "Ink instrument",
+      "20": "Mesh trap"
+    },
+    "down": {
+      "1": "Baseball hitter's tool",
+      "2": "Exist, plural",
+      "3": "Ten",
+      "4": "Take a small drink",
+      "5": "Wrath",
+      "6": "Writing tool",
+      "11": "Atlas page",
+      "12": "Primate",
+      "13": "Writing instrument",
+      "14": "Sprint, past tense",
+      "15": "Exist, plural",
+      "16": "Catching mesh"
+    }
+  },
+  {
+    "id": "8b8f6f42-0f73-4cc0-8f87-8aebc5fa7b12",
+    "title": "Organic Control",
+    "split": "demo",
+    "solution": ["THE#GEM", "WON#EPA", "ORGANIC", "#MINES#", "CONTROL", "ONE#ADA", "DES#LEG"],
+    "across": {
+      "1": "Definite article",
+      "4": "Precious stone",
+      "7": "Prevailed",
+      "8": "U.S. environmental agency, briefly",
+      "9": "Produced without synthetic chemicals",
+      "11": "Extracts ore from the ground",
+      "12": "Authority over something",
+      "14": "First positive integer",
+      "15": "Lovelace of early computing",
+      "16": "French plural article",
+      "17": "A limb"
+    },
+    "down": {
+      "1": "Number after one",
+      "2": "Chemical messenger in the body",
+      "3": "Machines that provide power",
+      "4": "Broad rather than specific",
+      "5": "An installment of a series",
+      "6": "Apple computer, informally",
+      "10": "Colony insect",
+      "12": "Atlantic food fish",
+      "13": "Fall behind"
+    }
+  },
+  {
+    "id": "74e9c713-6d94-42be-94db-2a4d9672ae61",
+    "title": "Letters Abroad",
+    "split": "demo",
+    "solution": ["AND#PAT", "CUE#OUR", "EMBASSY", "#BURST#", "LETTERS", "ORE#SIP", "USD#SAY"],
+    "across": {
+      "1": "Conjunction joining two items",
+      "4": "Light tap",
+      "7": "Prompt for a performer",
+      "8": "Belonging to us",
+      "9": "Diplomatic mission",
+      "11": "Sudden short outbreak",
+      "12": "Alphabet characters",
+      "14": "Metal-bearing rock",
+      "15": "Drink in small amounts",
+      "16": "U.S. currency code",
+      "17": "Utter aloud"
+    },
+    "down": {
+      "1": "Top expert",
+      "2": "Figures used for counting",
+      "3": "Made a first public appearance",
+      "4": "Notices displayed on walls",
+      "5": "European country whose capital is Vienna",
+      "6": "Make an attempt",
+      "10": "Creative expression",
+      "12": "Gehrig or Reed, familiarly",
+      "13": "Covert intelligence agent"
+    }
+  },
+  {
+    "id": "e41a2c17-d284-4e45-b0dd-2d06e73b47fb",
+    "title": "Orange Lions",
+    "split": "demo",
+    "solution": ["WAS#SPA", "HIT#IRS", "ORANGES", "#LIONS#", "FINNISH", "ONE#NEO", "RED#GDP"],
+    "across": {
+      "1": "Past tense of be",
+      "4": "Resort offering treatments",
+      "7": "Struck",
+      "8": "U.S. tax agency",
+      "9": "Citrus fruits",
+      "11": "Pride members",
+      "12": "From Helsinki, perhaps",
+      "14": "Single unit",
+      "15": "Prefix meaning new",
+      "16": "Color of a stop sign",
+      "17": "Measure of an economy, briefly"
+    },
+    "down": {
+      "1": "Identity question",
+      "2": "Passenger flight company",
+      "3": "Marked with discoloration",
+      "4": "Adding a signature",
+      "5": "Applied pressure to",
+      "6": "A donkey",
+      "10": "Prefix meaning not",
+      "12": "Intended to benefit",
+      "13": "A short jump"
+    }
+  }
+]

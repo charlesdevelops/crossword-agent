@@ -1,0 +1,13 @@
+.git
+.venv
+node_modules
+cdk.out
+htmlcov
+output
+tests
+tmp
+.pytest_cache
+.ruff_cache
+*.egg-info
+__pycache__
+*.pyc
