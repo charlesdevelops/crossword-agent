@@ -41,7 +41,6 @@ class PuzzleEvaluation(BaseModel):
     output_tokens: int
     latency_ms: float
     elapsed_ms: float
-    estimated_cost_usd: float | None = None
     candidate_replacements: int
     recovery_opportunities: int
     recovered_conflicts: int
@@ -78,8 +77,6 @@ class EvaluationSummary(BaseModel):
     p50_latency_ms: float
     average_elapsed_ms: float
     p50_elapsed_ms: float
-    average_cost_usd: float | None = None
-    cost_per_successful_solve_usd: float | None = None
     average_candidate_replacements: float
     initial_candidate_recall_at_1: float
     initial_candidate_recall_at_5: float
@@ -111,7 +108,6 @@ class ModelBakeoffResult(BaseModel):
     model: str
     word_accuracy: float
     full_puzzle_solve_rate: float
-    average_cost_usd: float | None
     p50_latency_ms: float
 
 
@@ -280,7 +276,6 @@ async def evaluate_records(
                 output_tokens=provider.usage.output_tokens,
                 latency_ms=provider.usage.latency_ms,
                 elapsed_ms=run.elapsed_ms,
-                estimated_cost_usd=provider.usage.estimated_cost_usd,
                 status=run.status,
                 initial_candidate_recall_at_1=initial_recall["recall_at_1"],
                 initial_candidate_recall_at_5=initial_recall["recall_at_5"],
@@ -363,7 +358,6 @@ async def run_model_bakeoff(
                 model=model,
                 word_accuracy=summary.word_accuracy,
                 full_puzzle_solve_rate=summary.full_puzzle_solve_rate,
-                average_cost_usd=summary.average_cost_usd,
                 p50_latency_ms=summary.p50_latency_ms,
             )
         )
@@ -372,9 +366,6 @@ async def run_model_bakeoff(
         key=lambda item: (
             -item.word_accuracy,
             -item.full_puzzle_solve_rate,
-            item.average_cost_usd
-            if item.average_cost_usd is not None
-            else float("inf"),
             item.p50_latency_ms,
             item.model,
         ),
@@ -608,11 +599,8 @@ def score_conflict_recovery(
 def summarize(results: Sequence[PuzzleEvaluation]) -> EvaluationSummary:
     if not results:
         raise ValueError("Cannot summarize an empty evaluation")
-    costs = [item.estimated_cost_usd for item in results if item.estimated_cost_usd is not None]
     recovery_opportunities = sum(item.recovery_opportunities for item in results)
     recovered_conflicts = sum(item.recovered_conflicts for item in results)
-    successful_solves = sum(item.full_puzzle_solved for item in results)
-    complete_cost_data = len(costs) == len(results)
     return EvaluationSummary(
         mode=results[0].mode,
         puzzles=len(results),
@@ -641,12 +629,6 @@ def summarize(results: Sequence[PuzzleEvaluation]) -> EvaluationSummary:
         p50_latency_ms=statistics.median(item.latency_ms for item in results),
         average_elapsed_ms=statistics.fmean(item.elapsed_ms for item in results),
         p50_elapsed_ms=statistics.median(item.elapsed_ms for item in results),
-        average_cost_usd=statistics.fmean(costs) if costs else None,
-        cost_per_successful_solve_usd=(
-            sum(costs) / successful_solves
-            if complete_cost_data and successful_solves
-            else None
-        ),
         average_candidate_replacements=statistics.fmean(
             item.candidate_replacements for item in results
         ),
@@ -704,9 +686,9 @@ def write_results(
         "",
         (
             "| Mode | Puzzles | Letter accuracy | Word accuracy | Full solves | "
-            "Violations | Calls | Tokens | p50 latency | Replacements | Cost |"
+            "Violations | Calls | Tokens | p50 latency | Replacements |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for mode, results in results_by_mode.items():
         summary = summarize(results)
@@ -716,8 +698,7 @@ def write_results(
             f"{summary.constraint_violations} | {summary.average_model_calls:.1f} | "
             f"{summary.average_input_tokens + summary.average_output_tokens:.0f} | "
             f"{summary.p50_latency_ms / 1000:.1f}s | "
-            f"{summary.average_candidate_replacements:.1f} | "
-            f"{_format_cost(summary.average_cost_usd)} |"
+            f"{summary.average_candidate_replacements:.1f} |"
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -785,14 +766,13 @@ def write_bakeoff_results(path: Path, results: Sequence[ModelBakeoffResult]) -> 
     lines = [
         "# Nebius Model Bake-off",
         "",
-        "| Rank | Model | Word accuracy | Full solves | Average cost | p50 latency |",
-        "|---:|---|---:|---:|---:|---:|",
+        "| Rank | Model | Word accuracy | Full solves | p50 latency |",
+        "|---:|---|---:|---:|---:|",
     ]
     for rank, result in enumerate(results, start=1):
         lines.append(
             f"| {rank} | {result.model} | {result.word_accuracy:.1%} | "
             f"{result.full_puzzle_solve_rate:.1%} | "
-            f"{_format_cost(result.average_cost_usd)} | "
             f"{result.p50_latency_ms / 1000:.1f}s |"
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -800,7 +780,3 @@ def write_bakeoff_results(path: Path, results: Sequence[ModelBakeoffResult]) -> 
         json.dumps([result.model_dump(mode="json") for result in results], indent=2),
         encoding="utf-8",
     )
-
-
-def _format_cost(value: float | None) -> str:
-    return f"${value:.4f}" if value is not None else "n/a"

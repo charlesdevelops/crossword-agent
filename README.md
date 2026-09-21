@@ -407,10 +407,9 @@ uv run python scripts/benchmark_agent.py \
 The dashboard is updated after every puzzle and is accompanied by
 `output/benchmark/dashboard.json`. It reports exact puzzle solve rate, word and letter accuracy,
 intersection consistency, wrong-word recovery, revisions, LLM tool calls, token usage,
-end-to-end latency, cost per puzzle, and cost per successful solve. It also reports initial and
-final candidate recall at 1/5/10, mean reciprocal rank, and oracle solve rate. Oracle solve rate
-answers the key diagnostic question: did every gold answer enter the candidate domains at all?
-Cost metrics require `INPUT_COST_PER_MTOK` and `OUTPUT_COST_PER_MTOK`.
+and end-to-end latency. It also reports initial and final candidate recall at 1/5/10, mean
+reciprocal rank, and oracle solve rate. Oracle solve rate answers the key diagnostic question:
+did every gold answer enter the candidate domains at all?
 
 Run the prescribed study split—20 development puzzles, the three separate bundled demos,
 50 held-out 7×7 puzzles, 20 held-out 14×14 puzzles, and a fixed 20-puzzle ablation subset:
@@ -431,8 +430,7 @@ uv run crossword bakeoff \
   --output output/evaluation/bakeoff.md
 ```
 
-The bake-off ranks models by word accuracy, full-puzzle solve rate, average configured cost,
-then p50 latency.
+The bake-off ranks models by word accuracy, full-puzzle solve rate, then p50 latency.
 
 Ablations:
 

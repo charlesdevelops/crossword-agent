@@ -91,8 +91,6 @@ def _render_dashboard(
     completed = len(results)
     progress = completed / requested_puzzles
     recovery = _format_percent(summary.conflict_recovery_rate)
-    average_cost = _format_cost(summary.average_cost_usd)
-    cost_per_solve = _format_cost(summary.cost_per_successful_solve_usd)
     rows = "\n".join(
         _puzzle_row(index, result) for index, result in enumerate(results, start=1)
     )
@@ -239,8 +237,6 @@ def _render_dashboard(
       <div class="metrics">
         {_metric("Tokens / puzzle", f"{summary.average_total_tokens:,.0f}")}
         {_metric("Mean latency", _format_duration(summary.average_elapsed_ms), "end-to-end")}
-        {_metric("Cost / puzzle", average_cost)}
-        {_metric("Cost / successful solve", cost_per_solve)}
       </div>
     </article>
   </section>
@@ -252,7 +248,7 @@ def _render_dashboard(
         <tr>
           <th>#</th><th>Puzzle</th><th>Result</th><th>Words</th><th>Letters</th>
           <th>Crossings</th><th>Candidates @5</th><th>Oracle</th><th>Recovered</th>
-          <th>Revisions</th><th>Calls</th><th>Tokens</th><th>Latency</th><th>Cost</th>
+          <th>Revisions</th><th>Calls</th><th>Tokens</th><th>Latency</th>
         </tr>
       </thead>
       <tbody>{rows}</tbody>
@@ -274,7 +270,6 @@ def _render_dashboard(
         solve rate requires every reference answer to be present somewhere in its final domain.
       </li>
       <li>Revisions are candidate replacements; LLM tool calls are provider invocations.</li>
-      <li>Cost requires INPUT_COST_PER_MTOK and OUTPUT_COST_PER_MTOK in the environment.</li>
     </ul>
     <p>Dataset: <code>{escape(dataset)}</code> · <a href="{escaped_raw_name}">Raw JSON</a></p>
   </section>
@@ -316,7 +311,6 @@ def _puzzle_row(index: int, result: PuzzleEvaluation) -> str:
         f"<td>{result.model_calls}</td>"
         f"<td>{tokens:,}</td>"
         f"<td>{_format_duration(result.elapsed_ms)}</td>"
-        f"<td>{_format_cost(result.estimated_cost_usd)}</td>"
         "</tr>"
     )
 
@@ -327,7 +321,3 @@ def _format_percent(value: float | None) -> str:
 
 def _format_duration(value_ms: float) -> str:
     return f"{value_ms / 1000:.1f}s"
-
-
-def _format_cost(value: float | None) -> str:
-    return f"${value:.4f}" if value is not None else "n/a"

@@ -74,8 +74,9 @@ async def test_html_dashboard_contains_requested_metrics(
     assert "Conflict recovery" in html
     assert "Candidate recall" in html
     assert "Oracle solve rate" in html
-    assert "Cost / successful solve" in html
+    assert "cost" not in html.lower()
     assert "Per-puzzle results" in html
     assert 'href="benchmark.json"' in html
     assert raw["metadata"]["completed_puzzles"] == 1
     assert raw["summary"]["full_puzzle_solve_rate"] == 1.0
+    assert "average_cost_usd" not in raw["summary"]
