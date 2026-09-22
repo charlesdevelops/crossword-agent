@@ -1,7 +1,9 @@
 # Crossword Agent
 
-A Nebius-backed crossword agent. The model proposes clue answers; deterministic
-Python handles grid geometry, crossing consistency, search, retries, and scoring.
+A Nebius-backed crossword agent built with
+[LangGraph](https://docs.langchain.com/oss/python/langgraph/overview). The model
+proposes clue answers; deterministic Python handles grid geometry, crossing
+consistency, search, retries, and scoring.
 
 ## Run it in three steps
 
@@ -39,8 +41,10 @@ uv run scripts/prepare_crosswordbench.py \
   --output data/crosswordbench/demo-7x7.json
 ```
 
-This downloads the CrossWordBench parquet from Hugging Face, converts it to the
-agent's JSON format, and writes 20 deterministic 7×7 puzzles.
+This downloads the
+[CrossWordBench dataset](https://huggingface.co/datasets/HINT-lab/CrossWordBench)
+from Hugging Face, converts it to the agent's JSON format, and writes 20
+deterministic 7×7 puzzles.
 
 Tell the app to use that dataset:
 
