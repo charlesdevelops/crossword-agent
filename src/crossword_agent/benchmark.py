@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import random
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
@@ -74,6 +74,46 @@ def write_benchmark_dashboard(
         ),
         encoding="utf-8",
     )
+
+
+def write_benchmark_collection(
+    path: Path,
+    *,
+    results_by_model: Mapping[str, Sequence[PuzzleEvaluation]],
+    dataset: str,
+    provider: str,
+    seed: int,
+    requested_puzzles: int,
+) -> None:
+    if not results_by_model:
+        raise ValueError("Cannot write an empty benchmark collection")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    generated_at = datetime.now(UTC).isoformat(timespec="seconds")
+    models = list(results_by_model)
+    payload = {
+        "metadata": {
+            "generated_at": generated_at,
+            "dataset": dataset,
+            "provider": provider,
+            "seed": seed,
+            "requested_puzzles": requested_puzzles,
+            "completed_models": len(models),
+            "models": models,
+        },
+        "models": {
+            model: {
+                "metadata": {
+                    "model": model,
+                    "completed_puzzles": len(results),
+                },
+                "summary": summarize(results).model_dump(mode="json"),
+                "puzzles": [result.model_dump(mode="json") for result in results],
+            }
+            for model, results in results_by_model.items()
+            if results
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _render_dashboard(
@@ -213,7 +253,7 @@ def _render_dashboard(
       <div class="metrics">
         {_metric("Conflict recovery", recovery, f"{summary.recovery_opportunities} opportunities")}
         {_metric("Revisions / puzzle", f"{summary.average_candidate_replacements:.2f}")}
-        {_metric("LLM tool calls / puzzle", f"{summary.average_model_calls:.2f}")}
+        {_metric("Model calls / puzzle", f"{summary.average_model_calls:.2f}")}
         {_metric("Constraint violations", str(summary.constraint_violations), "total")}
       </div>
     </article>
@@ -269,7 +309,7 @@ def _render_dashboard(
         Candidate recall measures whether the reference answer entered the ranked domains; oracle
         solve rate requires every reference answer to be present somewhere in its final domain.
       </li>
-      <li>Revisions are candidate replacements; LLM tool calls are provider invocations.</li>
+      <li>Revisions are candidate replacements; model calls are provider invocations.</li>
     </ul>
     <p>Dataset: <code>{escape(dataset)}</code> · <a href="{escaped_raw_name}">Raw JSON</a></p>
   </section>

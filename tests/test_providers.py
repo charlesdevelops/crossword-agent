@@ -5,7 +5,17 @@ import json
 import pytest
 
 from crossword_agent.models import CandidateAnswer, CandidateBatch, ClueRequest, UsageMetrics
-from crossword_agent.providers.common import invoke_structured_model, requests_payload
+from crossword_agent.providers.common import (
+    SYSTEM_PROMPT,
+    invoke_structured_model,
+    requests_payload,
+)
+from crossword_agent.providers.nebius import (
+    DEFAULT_KIMI_NEBIUS_BASE_URL,
+    NEBIUS_MODEL_OPTIONS,
+    NebiusCandidateProvider,
+    candidate_batch_json_schema,
+)
 
 
 async def test_structured_provider_groups_and_caps_candidates() -> None:
@@ -55,6 +65,46 @@ def test_provider_schema_does_not_request_confidence() -> None:
     assert "confidence" not in schema
     assert '"answer"' in schema
     assert "clue_answer" not in schema
+
+
+def test_provider_prompt_describes_json_candidate_shape() -> None:
+    assert '"candidates":[{"entry_id":"1A","answer":"EXAMPLE"}]' in SYSTEM_PROMPT
+
+
+def test_nebius_uses_strict_json_schema() -> None:
+    provider = NebiusCandidateProvider(
+        model_id=NEBIUS_MODEL_OPTIONS[0],
+        api_key="test-key",
+    )
+
+    assert provider._response_format["type"] == "json_schema"
+    assert provider._response_format["json_schema"]["strict"] is True
+    schema = provider._response_format["json_schema"]["schema"]
+    assert schema["additionalProperties"] is False
+    assert schema["$defs"]["CandidateAnswer"]["additionalProperties"] is False
+
+
+def test_nebius_accepts_explicit_reasoning_effort() -> None:
+    provider = NebiusCandidateProvider(
+        model_id=NEBIUS_MODEL_OPTIONS[0],
+        api_key="test-key",
+        reasoning_effort="high",
+    )
+
+    assert provider._reasoning_effort == "high"
+
+
+def test_nebius_routes_kimi_through_eu_chat_api(monkeypatch) -> None:
+    provider = NebiusCandidateProvider(model_id="moonshotai/Kimi-K3", api_key="test-key")
+
+    assert str(provider._client.base_url) == DEFAULT_KIMI_NEBIUS_BASE_URL
+
+
+def test_candidate_batch_schema_is_strict() -> None:
+    schema = candidate_batch_json_schema()
+
+    assert schema["additionalProperties"] is False
+    assert schema["$defs"]["CandidateAnswer"]["additionalProperties"] is False
 
 
 def test_provider_accepts_common_clue_answer_alias() -> None:

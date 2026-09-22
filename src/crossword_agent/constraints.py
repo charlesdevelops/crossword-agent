@@ -101,14 +101,23 @@ def entry_pattern(
 def render_grid(
     puzzle: PuzzleDefinition,
     assignment: dict[str, Candidate] | dict[str, str],
+    *,
+    tolerate_conflicts: bool = False,
 ) -> tuple[str, ...]:
     rows = [list(row) for row in puzzle.template]
+    conflict_cells: set[tuple[int, int]] = set()
     for entry_id, assigned in assignment.items():
         answer = assigned.answer if isinstance(assigned, Candidate) else assigned
         entry = puzzle.entry_map[entry_id]
         for index, (row, col) in enumerate(entry.cells):
+            if (row, col) in conflict_cells:
+                continue
             existing = rows[row][col]
             if existing not in {".", answer[index]}:
+                if tolerate_conflicts:
+                    conflict_cells.add((row, col))
+                    rows[row][col] = "?"
+                    continue
                 raise ValueError(f"Inconsistent assignment at {(row, col)}")
             rows[row][col] = answer[index]
     return tuple("".join(row) for row in rows)
@@ -145,6 +154,24 @@ def search_assignments(
     n_best: int = 5,
 ) -> SearchResult:
     entry_ids = tuple(entry.id for entry in puzzle.entries)
+    crossings_by_entry: dict[str, tuple[tuple[str, int, int], ...]] = {
+        entry_id: tuple(
+            (
+                intersection.entry_b
+                if intersection.entry_a == entry_id
+                else intersection.entry_a,
+                intersection.index_a
+                if intersection.entry_a == entry_id
+                else intersection.index_b,
+                intersection.index_b
+                if intersection.entry_a == entry_id
+                else intersection.index_a,
+            )
+            for intersection in puzzle.intersections
+            if entry_id in {intersection.entry_a, intersection.entry_b}
+        )
+        for entry_id in entry_ids
+    }
     crossing_degree = {
         entry_id: sum(
             entry_id in {intersection.entry_a, intersection.entry_b}
@@ -207,7 +234,14 @@ def search_assignments(
             entry_id: [
                 candidate
                 for candidate in domains.get(entry_id, [])
-                if candidate_fits(puzzle, entry_id, candidate.answer, current)
+                if all(
+                    other_id not in current
+                    or current[other_id].answer[other_position]
+                    == candidate.answer[current_position]
+                    for other_id, current_position, other_position in crossings_by_entry[
+                        entry_id
+                    ]
+                )
             ]
             for entry_id in remaining
         }
@@ -245,6 +279,5 @@ def _merge_candidate(first: Candidate, second: Candidate) -> Candidate:
         answer=first.answer,
         rank=min(first.rank, second.rank),
         lexical_score=max(first.lexical_score, second.lexical_score),
-        retrieval_score=max(first.retrieval_score, second.retrieval_score),
         source="+".join(sources),
     )

@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Crossword Agent Benchmarks</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      --ink: #10243a;
+      --muted: #687684;
+      --surface: #fff;
+      --background: #f5f6f1;
+      --line: #dfe3da;
+      --accent: #dfff52;
+      --good: #52704f;
+      --bad: #a5443c;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--background); color: var(--ink); }
+    main { max-width: 1680px; margin: 0 auto; padding: 24px; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 20px; }
+    h1 { margin: 0; font-size: clamp(2rem, 4vw, 3.5rem); letter-spacing: -.05em; }
+    h2 { margin: 0 0 12px; }
+    .header-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .model-picker { display: flex; align-items: center; gap: 10px; }
+    .model-picker label { color: var(--muted); font-size: .8rem; font-weight: 750; }
+    select, button, a.button {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 10px 12px;
+      font: inherit;
+    }
+    select { min-width: min(100%, 420px); }
+    a.button { text-decoration: none; font-weight: 750; }
+    .meta { color: var(--muted); font-size: .85rem; line-height: 1.6; margin-bottom: 16px; }
+    .comparison, .detail { display: grid; gap: 14px; }
+    .comparison-table, .puzzle-table, .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 10px 30px #10243a0a;
+    }
+    .comparison-table, .puzzle-table { overflow-x: auto; padding: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    th, td { padding: 10px 9px; border-bottom: 1px solid #e8ebe3; text-align: right; white-space: nowrap; }
+    th { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; }
+    th:first-child, td:first-child { text-align: left; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #f7f8f4; }
+    .good { color: var(--good); font-weight: 800; }
+    .bad { color: var(--bad); font-weight: 800; }
+    .groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .card { padding: 16px; }
+    .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .metric { min-height: 88px; background: #f2f4ee; border-radius: 6px; padding: 11px; }
+    .metric span { display: block; color: var(--muted); font-size: .76rem; font-weight: 750; }
+    .metric strong { display: block; margin-top: 8px; font-size: 1.4rem; letter-spacing: -.03em; }
+    .metric small { display: block; margin-top: 4px; color: var(--muted); }
+    .loading, .error { padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 1100px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      main { padding: 16px; }
+      .header-actions, .model-picker { align-items: stretch; flex-direction: column; }
+      select { min-width: 0; width: 100%; }
+      .groups { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Agent Benchmarks</h1>
+    <div class="header-actions">
+      <div class="model-picker">
+        <label for="model-view">View</label>
+        <select id="model-view" aria-label="Choose benchmark view">
+          <option value="comparison">Comparison</option>
+        </select>
+      </div>
+      <a class="button" href="./">Back to solver</a>
+    </div>
+  </header>
+  <div id="meta" class="meta"></div>
+  <div id="content" class="loading">Loading benchmark results…</div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let benchmark = null;
+
+function percent(value) {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function duration(value) {
+  return `${(value / 1000).toFixed(1)}s`;
+}
+
+function number(value) {
+  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function metric(label, value, detail = "") {
+  return `<div class="metric"><span>${label}</span><strong>${value}</strong>${detail ? `<small>${detail}</small>` : ""}</div>`;
+}
+
+function summaryTable(models) {
+  const rows = models.map(model => {
+    const summary = benchmark.models[model].summary;
+    return `<tr>
+      <td>${model}</td>
+      <td class="${summary.full_puzzle_solve_rate >= .5 ? "good" : "bad"}">${percent(summary.full_puzzle_solve_rate)}</td>
+      <td>${percent(summary.word_accuracy)}</td>
+      <td>${percent(summary.final_candidate_recall_at_5)}</td>
+      <td>${percent(summary.final_oracle_solve_rate)}</td>
+      <td>${summary.average_model_calls.toFixed(1)}</td>
+      <td>${duration(summary.average_elapsed_ms)}</td>
+      <td>${number(summary.average_total_tokens)}</td>
+    </tr>`;
+  }).join("");
+  return `<section class="comparison-table">
+    <h2>Model comparison</h2>
+    <table>
+      <thead><tr>
+        <th>Model</th><th>Full solves</th><th>Word accuracy</th><th>Recall @5</th>
+        <th>Oracle solves</th><th>Calls / puzzle</th><th>Mean latency</th><th>Tokens / puzzle</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </section>`;
+}
+
+function detailView(model) {
+  const item = benchmark.models[model];
+  const summary = item.summary;
+  const rows = item.puzzles.map((puzzle, index) => {
+    const result = puzzle.full_puzzle_solved ? "Solved" : "Unsolved";
+    return `<tr>
+      <td>${index + 1}</td><td>${puzzle.puzzle_id}</td>
+      <td class="${puzzle.full_puzzle_solved ? "good" : "bad"}">${result}</td>
+      <td>${percent(puzzle.word_accuracy)}</td><td>${percent(puzzle.letter_accuracy)}</td>
+      <td>${percent(puzzle.final_candidate_recall_at_5)}</td>
+      <td>${puzzle.model_calls}</td><td>${duration(puzzle.elapsed_ms)}</td>
+    </tr>`;
+  }).join("");
+  return `<section class="detail">
+    <div class="groups">
+      <article class="card"><h2>Quality</h2><div class="metrics">
+        ${metric("Puzzle solve rate", percent(summary.full_puzzle_solve_rate))}
+        ${metric("Word accuracy", percent(summary.word_accuracy))}
+        ${metric("Letter accuracy", percent(summary.letter_accuracy))}
+        ${metric("Crossing consistency", percent(summary.intersection_consistency))}
+      </div></article>
+      <article class="card"><h2>Agent behaviour</h2><div class="metrics">
+        ${metric("Conflict recovery", summary.conflict_recovery_rate == null ? "n/a" : percent(summary.conflict_recovery_rate))}
+        ${metric("Revisions / puzzle", summary.average_candidate_replacements.toFixed(2))}
+        ${metric("Calls / puzzle", summary.average_model_calls.toFixed(2))}
+        ${metric("Constraint violations", number(summary.constraint_violations), "total")}
+      </div></article>
+      <article class="card"><h2>Candidate recall</h2><div class="metrics">
+        ${metric("Initial recall @1", percent(summary.initial_candidate_recall_at_1))}
+        ${metric("Final recall @5", percent(summary.final_candidate_recall_at_5))}
+        ${metric("Final recall @10", percent(summary.final_candidate_recall_at_10))}
+        ${metric("Oracle solve rate", percent(summary.final_oracle_solve_rate))}
+      </div></article>
+      <article class="card"><h2>Efficiency</h2><div class="metrics">
+        ${metric("Tokens / puzzle", number(summary.average_total_tokens))}
+        ${metric("Mean latency", duration(summary.average_elapsed_ms))}
+        ${metric("P50 latency", duration(summary.p50_elapsed_ms))}
+        ${metric("P50 model latency", duration(summary.p50_latency_ms))}
+      </div></article>
+    </div>
+    <section class="puzzle-table"><h2>${model} · Per-puzzle results</h2>
+      <table><thead><tr>
+        <th>#</th><th>Puzzle</th><th>Result</th><th>Words</th><th>Letters</th>
+        <th>Recall @5</th><th>Calls</th><th>Latency</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+    </section>
+  </section>`;
+}
+
+function render(view) {
+  const models = benchmark.metadata.models.filter(model => benchmark.models[model]);
+  $("content").innerHTML = view === "comparison"
+    ? summaryTable(models)
+    : detailView(view);
+}
+
+async function load() {
+  const response = await fetch("api/benchmarks");
+  if (!response.ok) throw new Error("Benchmark results are not available yet.");
+  benchmark = await response.json();
+  $("meta").textContent =
+    `${benchmark.metadata.provider} · ${benchmark.metadata.requested_puzzles} puzzles · ` +
+    `seed ${benchmark.metadata.seed} · generated ${benchmark.metadata.generated_at}`;
+  const selector = $("model-view");
+  benchmark.metadata.models.forEach(model => {
+    if (!benchmark.models[model]) return;
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    selector.appendChild(option);
+  });
+  selector.addEventListener("change", () => render(selector.value));
+  render("comparison");
+}
+
+load().catch(error => {
+  $("content").className = "error";
+  $("content").textContent = error.message;
+});
+</script>
+</body>
+</html>

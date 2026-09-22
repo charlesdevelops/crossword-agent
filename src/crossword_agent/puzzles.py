@@ -36,7 +36,7 @@ class PuzzleRepository:
         if not path.is_file():
             raise FileNotFoundError(
                 f"Configured crossword dataset does not exist: {path}. "
-                "Run one of the dataset preparation scripts first."
+                "Run scripts/prepare_crosswordbench.py first."
             )
         payload: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
         try:
@@ -44,7 +44,7 @@ class PuzzleRepository:
         except (KeyError, TypeError, ValueError) as error:
             raise PuzzleFormatError(
                 f"Prepared dataset is invalid: {path}. Regenerate it with "
-                "the appropriate dataset preparation script. "
+                "scripts/prepare_crosswordbench.py. "
                 f"Original error: {error}"
             ) from error
 

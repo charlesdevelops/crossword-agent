@@ -4,8 +4,11 @@ import os
 
 import pytest
 
+from crossword_agent.config import load_local_env
 from crossword_agent.models import ClueRequest
 from crossword_agent.providers.nebius import NebiusCandidateProvider
+
+load_local_env()
 
 pytestmark = pytest.mark.integration
 
@@ -29,4 +32,3 @@ async def test_nebius_returns_structured_candidates() -> None:
 
     assert result["1A"][0].answer.upper() == "BRAVE"
     assert provider.usage.calls >= 1
-

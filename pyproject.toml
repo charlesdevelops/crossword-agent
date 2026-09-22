@@ -5,15 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "crossword-agent"
 version = "0.1.0"
-description = "A provider-neutral, constraint-solving crossword agent."
+description = "A Nebius-backed, constraint-solving crossword agent."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "fastapi>=0.117,<1",
-  "langchain-aws>=1.0,<2",
   "langchain-core>=1.0,<2",
-  "langchain-nebius>=0.1,<1",
   "langgraph>=0.6,<2",
+  "openai>=1.0,<2",
   "pydantic>=2.11,<3",
   "typer>=0.17,<1",
   "uvicorn>=0.35,<1",

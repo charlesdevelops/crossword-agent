@@ -13,15 +13,6 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
       - run: uv sync --all-groups --locked
-      - run: npm ci
-      - run: uv run ruff check src tests infra
+      - run: uv run ruff check src tests scripts
       - run: uv run pytest
-      - run: npm run synth
-        env:
-          CROSSWORD_AWS_REGION: ap-southeast-2
-          JSII_RUNTIME_PACKAGE_CACHE_ROOT: /tmp/jsii-cache

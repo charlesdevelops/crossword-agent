@@ -23,10 +23,9 @@ from crossword_agent.evaluation import (
 )
 from crossword_agent.logging_config import configure_logging
 from crossword_agent.providers.base import CandidateProvider
-from crossword_agent.providers.bedrock import BedrockCandidateProvider
-from crossword_agent.providers.nebius import NebiusCandidateProvider
+from crossword_agent.providers.nebius import NEBIUS_MODEL_OPTIONS, NebiusCandidateProvider
 from crossword_agent.puzzles import PuzzleRepository
-from crossword_agent.runtime import create_clue_index, create_lexicon
+from crossword_agent.runtime import create_lexicon
 from crossword_agent.tracing import configure_tracing
 
 load_local_env()
@@ -37,12 +36,8 @@ logger = logging.getLogger(__name__)
 app = typer.Typer(no_args_is_help=True, help="Constraint-solving crossword agent")
 
 
-def _provider(name: str) -> CandidateProvider:
-    if name == "bedrock":
-        return BedrockCandidateProvider()
-    if name == "nebius":
-        return NebiusCandidateProvider()
-    raise typer.BadParameter("Provider must be 'bedrock' or 'nebius'")
+def _provider() -> CandidateProvider:
+    return NebiusCandidateProvider()
 
 
 def _repository() -> PuzzleRepository:
@@ -57,7 +52,6 @@ def _repository() -> PuzzleRepository:
 @app.command()
 def solve(
     puzzle: Annotated[str, typer.Option("--puzzle", help="Configured puzzle ID")],
-    provider: Annotated[str, typer.Option(help="bedrock or nebius")] = "bedrock",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Solve one bundled puzzle."""
@@ -70,9 +64,8 @@ def solve(
         solve_puzzle(
             run_id="cli",
             puzzle=definition,
-            provider=_provider(provider),
+            provider=_provider(),
             lexicon=create_lexicon(),
-            clue_index=create_clue_index(),
         )
     )
     if json_output:
@@ -121,7 +114,6 @@ def serve(
 def evaluate(
     dataset: Annotated[Path, typer.Option(exists=True, dir_okay=False)],
     output: Annotated[Path, typer.Option()] = Path("output/evaluation/results.md"),
-    provider: Annotated[str, typer.Option(help="bedrock or nebius")] = "bedrock",
     modes: Annotated[
         str,
         typer.Option(help="Comma-separated ablations"),
@@ -140,10 +132,9 @@ def evaluate(
         results_by_mode[mode] = asyncio.run(
             evaluate_records(
                 records,
-                provider_factory=lambda: _provider(provider),
+                provider_factory=_provider,
                 mode=mode,  # type: ignore[arg-type]
                 lexicon=create_lexicon(),
-                clue_index=create_clue_index(),
             )
         )
     write_results(output, results_by_mode)  # type: ignore[arg-type]
@@ -154,7 +145,6 @@ def evaluate(
 def evaluate_study_command(
     dataset: Annotated[Path, typer.Option(exists=True, dir_okay=False)],
     output: Annotated[Path, typer.Option()] = Path("output/evaluation"),
-    provider: Annotated[str, typer.Option(help="bedrock or nebius")] = "nebius",
     seed: Annotated[int, typer.Option()] = 20260919,
 ) -> None:
     """Run the specified 20/3/50/20 held-out study and fixed ablations."""
@@ -171,9 +161,8 @@ def evaluate_study_command(
     heldout_full, ablations = asyncio.run(
         evaluate_study(
             split,
-            provider_factory=lambda: _provider(provider),
+            provider_factory=_provider,
             lexicon=create_lexicon(),
-            clue_index=create_clue_index(),
         )
     )
     write_study_results(
@@ -200,11 +189,7 @@ def bakeoff(
     models: Annotated[
         str,
         typer.Option(help="Comma-separated Nebius model IDs"),
-    ] = (
-        "deepseek-ai/DeepSeek-R1-0528,"
-        "Qwen/Qwen3-235B-A22B,"
-        "openai/gpt-oss-120b"
-    ),
+    ] = ",".join(NEBIUS_MODEL_OPTIONS),
     seed: Annotated[int, typer.Option()] = 20260919,
 ) -> None:
     """Rank Nebius models on the 20-puzzle development split."""
@@ -223,7 +208,6 @@ def bakeoff(
             models=selected_models,
             provider_factory=lambda model: NebiusCandidateProvider(model_id=model),
             lexicon=create_lexicon(),
-            clue_index=create_clue_index(),
         )
     )
     write_bakeoff_results(output, results)

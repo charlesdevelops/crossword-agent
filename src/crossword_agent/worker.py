@@ -5,7 +5,7 @@ import time
 
 from crossword_agent.agent import AgentSettings, solve_puzzle
 from crossword_agent.models import AgentEvent, RunSnapshot, SolveMetrics, SolveStatus
-from crossword_agent.runtime import create_clue_index, create_lexicon, create_provider
+from crossword_agent.runtime import create_lexicon, create_provider
 from crossword_agent.storage import RunStore, get_run_store
 from crossword_agent.tracing import TraceContext, start_span
 
@@ -73,12 +73,15 @@ async def process_run(
             )
 
         try:
+            provider = create_provider(
+                model_id=record.model_id,
+                reasoning_effort=record.reasoning_effort,
+            )
             result = await solve_puzzle(
                 run_id=run_id,
                 puzzle=puzzle,
-                provider=create_provider(),
+                provider=provider,
                 lexicon=create_lexicon(),
-                clue_index=create_clue_index(),
                 settings=AgentSettings(),
                 observer=observer,
             )

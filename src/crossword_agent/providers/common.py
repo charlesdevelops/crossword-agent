@@ -8,8 +8,6 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
-
 from crossword_agent.models import (
     Candidate,
     CandidateBatch,
@@ -21,7 +19,7 @@ from crossword_agent.tracing import start_span
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You solve standard American-style crossword clues.
-Return candidate answers only through the provided schema.
+Return candidate answers only through the JSON response schema.
 Answers must contain letters only, match the requested length, and fit every known pattern letter.
 Apply crossword conventions: abbreviations, plurals, tense, wordplay, proper names,
 and fill-in-the-blank grammar.
@@ -29,6 +27,10 @@ Treat crossing context as useful but fallible evidence.
 For verification requests, independently check the current answer and replace it when
 a listed or new answer is better.
 Return a diverse ranked list rather than near-duplicates. Rank the most likely answer first.
+Return exactly one JSON object with this shape:
+{"candidates":[{"entry_id":"1A","answer":"EXAMPLE"}]}
+Use the actual requested entry IDs and return an empty candidates list only when
+there are no valid answers.
 Do not provide hidden reasoning or explanatory prose."""
 
 
@@ -70,8 +72,8 @@ async def invoke_structured_model(
     model_id: str = "unknown",
 ) -> dict[str, list[Candidate]]:
     messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=requests_payload(requests)),
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": requests_payload(requests)},
     ]
     last_error: Exception | None = None
     for attempt in range(2):
@@ -142,13 +144,14 @@ async def invoke_structured_model(
                 )
                 messages = [
                     *messages,
-                    HumanMessage(
-                        content=(
+                    {
+                        "role": "user",
+                        "content": (
                             "The previous response was invalid. Return only schema-valid "
                             "candidates for these entry IDs: "
                             f"{sorted(request.entry_id for request in requests)}."
-                        )
-                    ),
+                        ),
+                    },
                 ]
                 if attempt == 0:
                     continue
@@ -173,6 +176,14 @@ def _unwrap_result(result: Any) -> tuple[CandidateBatch, Any]:
 def _add_message_usage(usage: UsageMetrics, raw: Any) -> tuple[int, int]:
     if raw is None:
         return 0, 0
+    direct_usage = getattr(raw, "usage", None)
+    if direct_usage is not None:
+        input_tokens = int(getattr(direct_usage, "prompt_tokens", 0) or 0)
+        output_tokens = int(getattr(direct_usage, "completion_tokens", 0) or 0)
+        usage.input_tokens += input_tokens
+        usage.output_tokens += output_tokens
+        _add_usage_cost(usage)
+        return input_tokens, output_tokens
     metadata = getattr(raw, "usage_metadata", None) or {}
     response_metadata = getattr(raw, "response_metadata", None) or {}
     provider_usage = (
@@ -186,10 +197,14 @@ def _add_message_usage(usage: UsageMetrics, raw: Any) -> tuple[int, int]:
     )
     usage.input_tokens += input_tokens
     usage.output_tokens += output_tokens
+    _add_usage_cost(usage)
+    return input_tokens, output_tokens
+
+
+def _add_usage_cost(usage: UsageMetrics) -> None:
     input_price = float(os.getenv("INPUT_COST_PER_MTOK", "0"))
     output_price = float(os.getenv("OUTPUT_COST_PER_MTOK", "0"))
     if input_price or output_price:
         usage.estimated_cost_usd = (
             usage.input_tokens * input_price + usage.output_tokens * output_price
         ) / 1_000_000
-    return input_tokens, output_tokens

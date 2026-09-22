@@ -14,6 +14,7 @@ def test_store_enforces_global_lock_and_daily_quota() -> None:
     store = InMemoryRunStore(max_daily_runs=1, repository=repository)
 
     first = store.create_run(puzzle_id)
+    assert first.reasoning_effort == "none"
     with pytest.raises(RunBusyError):
         store.create_run(puzzle_id)
 

@@ -23,7 +23,6 @@ from crossword_agent.lexicon import PatternLexicon
 from crossword_agent.models import Candidate, ClueRequest, PuzzleRecord, SolveStatus
 from crossword_agent.providers.base import CandidateProvider
 from crossword_agent.puzzles import load_normalized_records
-from crossword_agent.retrieval import ClueAnswerIndex
 
 AblationMode = Literal["single_shot", "top1_constraints", "constraint_search", "full"]
 
@@ -227,7 +226,6 @@ async def evaluate_records(
     provider_factory: Callable[[], CandidateProvider],
     mode: AblationMode,
     lexicon: PatternLexicon | None = None,
-    clue_index: ClueAnswerIndex | None = None,
     max_concurrency: int = 1,
     on_result: Callable[[int, PuzzleEvaluation], Awaitable[None]] | None = None,
 ) -> list[PuzzleEvaluation]:
@@ -235,7 +233,6 @@ async def evaluate_records(
         raise ValueError("max_concurrency must be positive")
     semaphore = asyncio.Semaphore(max_concurrency)
     resolved_lexicon = lexicon or PatternLexicon.empty()
-    resolved_clue_index = clue_index or ClueAnswerIndex.empty()
 
     async def evaluate_one(
         index: int,
@@ -250,7 +247,6 @@ async def evaluate_records(
                 provider=provider,
                 mode=mode,
                 lexicon=resolved_lexicon,
-                clue_index=resolved_clue_index,
             )
             scores = score_assignment(record, run.assignment)
             recovery = score_conflict_recovery(
@@ -305,7 +301,6 @@ async def evaluate_study(
     *,
     provider_factory: Callable[[], CandidateProvider],
     lexicon: PatternLexicon | None = None,
-    clue_index: ClueAnswerIndex | None = None,
 ) -> tuple[list[PuzzleEvaluation], dict[AblationMode, list[PuzzleEvaluation]]]:
     """Run the full agent on 70 held-out puzzles and four fixed-subset ablations."""
 
@@ -315,7 +310,6 @@ async def evaluate_study(
         provider_factory=provider_factory,
         mode="full",
         lexicon=resolved_lexicon,
-        clue_index=clue_index,
     )
     subset_ids = {record.puzzle.id for record in split.ablation_subset}
     ablations: dict[AblationMode, list[PuzzleEvaluation]] = {}
@@ -325,7 +319,6 @@ async def evaluate_study(
             provider_factory=provider_factory,
             mode=mode,
             lexicon=resolved_lexicon,
-            clue_index=clue_index,
         )
     ablations["full"] = [
         result for result in heldout_full if result.puzzle_id in subset_ids
@@ -339,7 +332,6 @@ async def run_model_bakeoff(
     models: Sequence[str],
     provider_factory: Callable[[str], CandidateProvider],
     lexicon: PatternLexicon | None = None,
-    clue_index: ClueAnswerIndex | None = None,
 ) -> list[ModelBakeoffResult]:
     """Evaluate candidate models and return them in the specified selection order."""
 
@@ -350,7 +342,6 @@ async def run_model_bakeoff(
             provider_factory=lambda model=model: provider_factory(model),
             mode="full",
             lexicon=lexicon or PatternLexicon.empty(),
-            clue_index=clue_index,
         )
         summary = summarize(evaluations)
         results.append(
@@ -378,7 +369,6 @@ async def _run_mode(
     provider: CandidateProvider,
     mode: AblationMode,
     lexicon: PatternLexicon,
-    clue_index: ClueAnswerIndex,
 ) -> ModeRunResult:
     started = time.perf_counter()
     puzzle = record.puzzle
@@ -414,7 +404,6 @@ async def _run_mode(
             puzzle=puzzle,
             provider=provider,
             lexicon=lexicon,
-            clue_index=clue_index,
             settings=AgentSettings(),
             observer=capture_initial,
         )

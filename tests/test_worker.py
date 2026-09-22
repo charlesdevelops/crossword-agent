@@ -23,7 +23,11 @@ async def test_worker_claims_updates_and_releases_run(monkeypatch) -> None:
     )
     store = InMemoryRunStore(max_daily_runs=2, repository=repository)
     run = store.create_run(record.puzzle.id)
-    monkeypatch.setattr(worker_module, "create_provider", lambda: provider)
+    monkeypatch.setattr(
+        worker_module,
+        "create_provider",
+        lambda model_id=None, reasoning_effort=None: provider,
+    )
     monkeypatch.setattr(worker_module, "create_lexicon", PatternLexicon.empty)
 
     result = await worker_module.process_run(run.run_id, store=store)

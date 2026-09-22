@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 from crossword_agent.benchmark import (
     select_benchmark_records,
+    write_benchmark_collection,
     write_benchmark_dashboard,
 )
 from crossword_agent.evaluation import evaluate_records
@@ -80,3 +82,38 @@ async def test_html_dashboard_contains_requested_metrics(
     assert raw["metadata"]["completed_puzzles"] == 1
     assert raw["summary"]["full_puzzle_solve_rate"] == 1.0
     assert "average_cost_usd" not in raw["summary"]
+
+
+def test_benchmark_collection_contains_model_comparison_data(demo_record, tmp_path) -> None:
+    gold = _gold_answers(demo_record)
+
+    def provider_factory() -> ScriptedCandidateProvider:
+        return ScriptedCandidateProvider(
+            {
+                entry_id: [[Candidate(answer=answer)]]
+                for entry_id, answer in gold.items()
+            }
+        )
+
+    results = asyncio.run(
+        evaluate_records(
+            [demo_record],
+            provider_factory=provider_factory,
+            mode="full",
+        )
+    )
+    output = tmp_path / "models.json"
+
+    write_benchmark_collection(
+        output,
+        results_by_model={"model-a": results, "model-b": results},
+        dataset="prepared.json",
+        provider="nebius",
+        seed=42,
+        requested_puzzles=1,
+    )
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["metadata"]["models"] == ["model-a", "model-b"]
+    assert payload["models"]["model-a"]["summary"]["full_puzzle_solve_rate"] == 1.0
+    assert payload["models"]["model-b"]["puzzles"][0]["puzzle_id"] == demo_record.puzzle.id

@@ -8,8 +8,9 @@
     :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
     body { margin: 0; background: #f5f6f1; color: #10243a; }
     main { max-width: 1680px; margin: 0 auto; padding: 20px 24px 28px; }
-    header { margin-bottom: 14px; }
-    h1 { margin: 0; font-size: clamp(2rem, 4vw, 3.5rem); letter-spacing: -.05em; }
+    header { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: clamp(24px, 4vw, 64px); margin-bottom: 14px; }
+    h1 { margin: 0; white-space: nowrap; font-size: clamp(2rem, 4vw, 3.5rem); letter-spacing: -.05em; }
+    .header-controls { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(190px, .62fr) auto; align-items: center; gap: 12px; width: min(100%, 980px); margin-left: auto; }
     .layout { display: grid; grid-template-columns: minmax(0, 1fr) clamp(380px, 30vw, 620px); gap: 16px; align-items: stretch; }
     .panel { background: white; border: 1px solid #dfe3da; border-radius: 8px; padding: 16px; box-shadow: 0 10px 30px #10243a0d; }
     .puzzle-body { display: grid; grid-template-columns: minmax(420px, 1.3fr) minmax(320px, 1fr); gap: 22px; align-items: start; }
@@ -37,6 +38,10 @@
     button.primary { background: #dfff52; color: #10243a; }
     button.secondary { background: #e9ece4; color: #10243a; }
     button:disabled { opacity: .45; cursor: not-allowed; }
+    .model-picker { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 10px; min-width: 0; }
+    .model-picker label { color: #6b7784; font-size: .8rem; font-weight: 750; }
+    .model-picker select { width: 100%; min-width: 0; border: 1px solid #dfe3da; border-radius: 6px; background: white; color: #10243a; padding: 10px 12px; font: inherit; }
+    #benchmarks { flex: 0 0 auto; white-space: nowrap; }
     .actions { display: flex; gap: 8px; margin: 12px 0 0; }
     .status { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
     .badge { border-radius: 5px; background: #eef1e9; padding: 6px 10px; font-size: .8rem; font-weight: 750; }
@@ -76,14 +81,44 @@
       .activity-panel { position: static; }
       .log { height: 320px; }
     }
+    @media (max-width: 1080px) {
+      header { grid-template-columns: 1fr; gap: 14px; }
+      .header-controls { width: 100%; max-width: none; margin-left: 0; }
+    }
     @media (max-width: 860px) {
       .puzzle-body { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      h1 { white-space: normal; }
+      .header-controls { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
 <main>
-  <header><h1>Crossword Agent</h1></header>
+  <header>
+    <h1>Crossword Agent</h1>
+    <div class="header-controls">
+      <div class="model-picker">
+        <label for="model">Model</label>
+        <select id="model" disabled aria-label="Choose the solving model">
+          <option>Loading models…</option>
+        </select>
+      </div>
+      <div class="model-picker">
+        <label for="thinking">Thinking</label>
+        <select id="thinking" disabled aria-label="Choose reasoning effort">
+          <option value="none">None</option>
+          <option value="minimal">Minimal</option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="xhigh">XHigh</option>
+        </select>
+      </div>
+      <button id="benchmarks" class="secondary" type="button">Benchmark results</button>
+    </div>
+  </header>
   <div class="layout">
     <section class="panel puzzle-panel">
       <div class="status"><h2 id="title">Loading puzzle…</h2><span id="status" class="badge">IDLE</span></div>
@@ -140,6 +175,7 @@ let activeRunId = null;
 let answerReviewRequestedFor = null;
 let lastEventFingerprint = "";
 let activeAgentEntryId = null;
+let modelsLoaded = false;
 const terminal = new Set(["SOLVED", "STALLED", "FAILED", "BUDGET_EXCEEDED"]);
 const turnEndPhases = new Set(["search", "finalize", "worker"]);
 const $ = (id) => document.getElementById(id);
@@ -206,9 +242,31 @@ function renderPuzzle(next) {
     ? "Ready to solve."
     : "This puzzle has no usable hints. Re-run the dataset preparation step.";
   $("solve").disabled = !valid;
+  $("model").disabled = !modelsLoaded;
+  $("thinking").disabled = !modelsLoaded;
+  $("thinking").value = "none";
   $("calls").textContent = "0";
   $("latency").textContent = "0s";
   $("filled").textContent = "0";
+}
+
+async function loadModels() {
+  const response = await fetch("api/models");
+  if (!response.ok) throw new Error("Unable to load available models");
+  const catalog = await response.json();
+  const select = $("model");
+  select.replaceChildren(
+    ...catalog.models.map(modelId => {
+      const option = document.createElement("option");
+      option.value = modelId;
+      option.textContent = modelId;
+      return option;
+    })
+  );
+  select.value = catalog.default;
+  modelsLoaded = true;
+  select.disabled = false;
+  $("thinking").disabled = false;
 }
 
 async function choosePuzzle() {
@@ -222,18 +280,28 @@ async function choosePuzzle() {
 
 async function solve() {
   if (!puzzle || !puzzle.entries.length) return;
+  if (!modelsLoaded || !$("model").value) {
+    $("log").textContent = "Models are still loading.";
+    return;
+  }
   resetAnswerReview();
   clearAgentTarget();
   $("solve").disabled = true; $("new-puzzle").disabled = true;
+  $("model").disabled = true; $("thinking").disabled = true;
   const response = await fetch("api/runs", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({puzzle_id: puzzle.id})
+    body: JSON.stringify({
+      puzzle_id: puzzle.id,
+      model_id: $("model").value,
+      reasoning_effort: $("thinking").value
+    })
   });
   if (!response.ok) {
     const body = await response.json();
     $("log").textContent = JSON.stringify(body.detail ?? body);
     $("solve").disabled = false; $("new-puzzle").disabled = false;
+    $("model").disabled = false; $("thinking").disabled = false;
     return;
   }
   const run = await response.json();
@@ -278,8 +346,20 @@ function renderRun(run) {
     const entry = event.entry_id ? ` ${event.entry_id}` : "";
     return `[${event.phase}${entry}] ${event.message}`;
   }).join("\n") || "Starting…";
+  const finalEvent = run.events.at(-1);
+  const trace = terminal.has(run.status) && finalEvent?.phase === "finalize"
+    ? `\n\n[agent trace]\n${run.events.map((event, index) => {
+        const entry = event.entry_id ? ` ${event.entry_id}` : "";
+        const details = Object.keys(event.details || {}).length
+          ? ` ${JSON.stringify(event.details)}`
+          : "";
+        return `${String(index + 1).padStart(2, "0")} [${event.phase}${entry}] `
+          + `${event.message}${details}`;
+      }).join("\n")}`
+    : "";
   const log = $("log");
-  log.textContent = run.error ? `${activity}\n[error] ${run.error}` : activity;
+  const error = run.error ? `\n[error] ${run.error}` : "";
+  log.textContent = `${activity}${trace}${error}`;
   requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; });
   const eventFingerprint = JSON.stringify(run.events);
   if (eventFingerprint !== lastEventFingerprint && run.events.length) {
@@ -292,6 +372,7 @@ function renderRun(run) {
   if (terminal.has(run.status)) {
     stopRunStream();
     $("solve").disabled = false; $("new-puzzle").disabled = false;
+    $("model").disabled = false; $("thinking").disabled = false;
     loadAnswerReview(run.run_id).catch(error => {
       if (activeRunId !== run.run_id) return;
       $("review-tab").disabled = false;
@@ -427,9 +508,11 @@ function clearAgentTarget() {
 
 $("new-puzzle").addEventListener("click", () => choosePuzzle().catch(error => $("log").textContent = error.message));
 $("solve").addEventListener("click", solve);
+$("benchmarks").addEventListener("click", () => { window.location.href = "benchmarks"; });
 $("hints-tab").addEventListener("click", () => showDetailPane("hints"));
 $("review-tab").addEventListener("click", () => showDetailPane("review"));
-choosePuzzle().catch(error => $("log").textContent = error.message);
+Promise.all([choosePuzzle(), loadModels()])
+  .catch(error => $("log").textContent = error.message);
 </script>
 </body>
 </html>

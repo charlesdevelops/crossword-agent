@@ -37,7 +37,7 @@ async def test_agent_recovers_by_reconsidering_weak_crossing(demo_record) -> Non
         puzzle=demo_record.puzzle,
         provider=provider,
         lexicon=PatternLexicon.from_words(["CAT", "CAR", "TEN"]),
-        settings=AgentSettings(max_model_calls=8, deadline_seconds=5),
+        settings=AgentSettings(max_model_calls=12, deadline_seconds=5),
     )
 
     assert result.status is SolveStatus.SOLVED
@@ -54,7 +54,7 @@ async def test_agent_stalls_cleanly_without_candidates(demo_record) -> None:
         puzzle=demo_record.puzzle,
         provider=provider,
         settings=AgentSettings(
-            max_model_calls=4,
+            max_model_calls=8,
             deadline_seconds=5,
             stagnant_round_limit=2,
         ),
@@ -90,6 +90,27 @@ async def test_agent_reports_failed_model_attempts(demo_record) -> None:
     assert result.metrics.model_latency_ms == batch_count * 25
     assert result.metrics.elapsed_ms > 0
     assert result.error == "provider unavailable"
+
+
+async def test_agent_enforces_deadline_during_model_request(demo_record) -> None:
+    class SlowProvider:
+        def __init__(self) -> None:
+            self.usage = UsageMetrics()
+
+        async def generate_candidates(self, _requests):
+            self.usage.calls += 1
+            await asyncio.sleep(1)
+            return {}
+
+    result = await solve_puzzle(
+        run_id="deadline",
+        puzzle=demo_record.puzzle,
+        provider=SlowProvider(),
+        settings=AgentSettings(deadline_seconds=0.01),
+    )
+
+    assert result.status is SolveStatus.FAILED
+    assert result.error == "Model request exceeded the solve deadline"
 
 
 async def test_initial_candidate_batches_run_concurrently_and_stream_progress(

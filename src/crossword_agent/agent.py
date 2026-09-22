@@ -31,7 +31,6 @@ from crossword_agent.models import (
     SolveStatus,
 )
 from crossword_agent.providers.base import CandidateProvider
-from crossword_agent.retrieval import ClueAnswerIndex
 from crossword_agent.tracing import start_span
 
 logger = logging.getLogger(__name__)
@@ -43,11 +42,10 @@ class AgentSettings(BaseModel):
     stagnant_round_limit: int = Field(default=2, ge=1)
     max_search_nodes: int = Field(default=50_000, ge=1)
     candidates_per_entry: int = Field(default=10, ge=1, le=20)
-    initial_batch_size: int = Field(default=8, ge=1, le=20)
+    initial_batch_size: int = Field(default=4, ge=1, le=20)
     initial_requested_candidates: int = Field(default=4, ge=1, le=20)
     requested_candidates: int = Field(default=8, ge=1, le=20)
     lexical_option_limit: int = Field(default=12, ge=1, le=100)
-    retrieval_candidate_limit: int = Field(default=5, ge=0, le=20)
     n_best_hypotheses: int = Field(default=5, ge=1, le=20)
     minimum_verification_calls: int = Field(default=2, ge=0, le=10)
     same_pattern_requery_limit: int = Field(default=2, ge=1, le=5)
@@ -136,12 +134,10 @@ def build_agent_graph(
     provider: CandidateProvider,
     *,
     lexicon: PatternLexicon | None = None,
-    clue_index: ClueAnswerIndex | None = None,
     settings: AgentSettings | None = None,
     observer: SnapshotObserver | None = None,
 ):
     lexicon = lexicon or PatternLexicon.empty()
-    clue_index = clue_index or ClueAnswerIndex.empty()
     settings = settings or AgentSettings()
 
     @_traced_node("initialize")
@@ -175,19 +171,13 @@ def build_agent_graph(
         requests = []
         candidate_pool: dict[str, list[Candidate]] = {}
         for entry in state["puzzle"].entries:
-            retrieved = clue_index.search(
-                entry.clue,
-                length=entry.length,
-                limit=settings.retrieval_candidate_limit,
-            )
-            candidate_pool[entry.id] = _retrieved_candidates(retrieved)
+            candidate_pool[entry.id] = []
             requests.append(
                 ClueRequest(
                     entry_id=entry.id,
                     clue=entry.clue,
                     length=entry.length,
                     pattern="?" * entry.length,
-                    lexical_options=tuple(item.answer for item in retrieved),
                     candidate_limit=settings.initial_requested_candidates,
                 )
             )
@@ -246,7 +236,11 @@ def build_agent_graph(
             Exception | None,
         ]:
             try:
-                generated = await provider.generate_candidates(batch)
+                generated = await _generate_with_deadline(
+                    provider,
+                    batch,
+                    deadline=state["started_at"] + settings.deadline_seconds,
+                )
             except Exception as error:  # noqa: BLE001
                 logger.exception(
                     "Initial model candidate batch failed",
@@ -332,7 +326,6 @@ def build_agent_graph(
                     details={
                         "batches": batch_count,
                         "failed_batches": failed_batches,
-                        "retrieval_index_examples": len(clue_index),
                     },
                 ),
             ],
@@ -527,23 +520,12 @@ def build_agent_graph(
             force_relax=strategy == "verify",
         )
         known = sum(char != "?" for char in pattern)
-        retrieved = clue_index.search(
-            selected.clue,
-            length=selected.length,
-            pattern=pattern,
-            limit=settings.retrieval_candidate_limit,
-        )
         lexical_words = (
             lexicon.find(pattern, settings.lexical_option_limit)
             if known >= max(1, selected.length // 3)
             else []
         )
-        lexical_options = tuple(
-            dict.fromkeys(
-                [item.answer for item in retrieved]
-                + lexical_words
-            )
-        )[: settings.lexical_option_limit]
+        lexical_options = tuple(lexical_words[: settings.lexical_option_limit])
         current = state["assignment"].get(selected.id)
         alternatives = tuple(
             candidate.answer
@@ -599,7 +581,11 @@ def build_agent_graph(
         if request is None:
             return {"status": SolveStatus.STALLED}
         try:
-            generated = await provider.generate_candidates([request])
+            generated = await _generate_with_deadline(
+                provider,
+                [request],
+                deadline=state["started_at"] + settings.deadline_seconds,
+            )
         except Exception as error:  # noqa: BLE001
             logger.exception(
                 "Targeted model candidate generation failed",
@@ -630,16 +616,6 @@ def build_agent_graph(
             key: list(value) for key, value in state["candidate_pool"].items()
         }
         new_candidates = generated.get(request.entry_id, [])
-        new_candidates.extend(
-            _retrieved_candidates(
-                clue_index.search(
-                    request.clue,
-                    length=request.length,
-                    pattern=request.pattern,
-                    limit=settings.retrieval_candidate_limit,
-                )
-            )
-        )
         known = sum(char != "?" for char in request.pattern)
         if known * 2 >= request.length:
             new_candidates.extend(
@@ -735,7 +711,6 @@ async def solve_puzzle(
     puzzle: PuzzleDefinition,
     provider: CandidateProvider,
     lexicon: PatternLexicon | None = None,
-    clue_index: ClueAnswerIndex | None = None,
     settings: AgentSettings | None = None,
     observer: SnapshotObserver | None = None,
 ) -> RunSnapshot:
@@ -750,7 +725,6 @@ async def solve_puzzle(
         graph = build_agent_graph(
             provider,
             lexicon=lexicon,
-            clue_index=clue_index,
             settings=settings,
             observer=observer,
         )
@@ -789,7 +763,7 @@ def snapshot_from_state(state: AgentState) -> RunSnapshot:
         run_id=state["run_id"],
         puzzle_id=puzzle.id,
         status=status,
-        grid=render_grid(puzzle, assignment),
+        grid=render_grid(puzzle, assignment, tolerate_conflicts=True),
         assignment={key: candidate.answer for key, candidate in assignment.items()},
         candidate_pool={
             entry_id: tuple(candidate.answer for candidate in candidates)
@@ -820,16 +794,20 @@ def _metrics_with_provider_usage(
     return metrics
 
 
-def _retrieved_candidates(retrieved) -> list[Candidate]:
-    return [
-        Candidate(
-            answer=item.answer,
-            rank=rank,
-            retrieval_score=item.score,
-            source="retrieval",
-        )
-        for rank, item in enumerate(retrieved, start=1)
-    ]
+async def _generate_with_deadline(
+    provider: CandidateProvider,
+    requests: list[ClueRequest],
+    *,
+    deadline: float,
+) -> dict[str, list[Candidate]]:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Model request exceeded the solve deadline")
+    try:
+        async with asyncio.timeout(remaining):
+            return await provider.generate_candidates(requests)
+    except TimeoutError as error:
+        raise TimeoutError("Model request exceeded the solve deadline") from error
 
 
 def _lexical_candidates(words: list[str], lexicon: PatternLexicon) -> list[Candidate]:

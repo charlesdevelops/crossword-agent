@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import time
 import uuid
 from importlib.resources import files
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Literal
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from crossword_agent.logging_config import configure_logging
 from crossword_agent.models import (
@@ -20,6 +22,10 @@ from crossword_agent.models import (
     RunSnapshot,
     SolveStatus,
     public_puzzle,
+)
+from crossword_agent.providers.nebius import (
+    DEFAULT_NEBIUS_MODEL,
+    NEBIUS_MODEL_OPTIONS,
 )
 from crossword_agent.puzzles import PuzzleRepository
 from crossword_agent.storage import (
@@ -49,6 +55,9 @@ app = FastAPI(
     openapi_url=None,
 )
 repository = PuzzleRepository.configured()
+BENCHMARK_RESULTS_PATH = Path(
+    os.getenv("BENCHMARK_RESULTS_PATH", "output/benchmark/models.json")
+)
 TERMINAL_STATUSES = frozenset(
     {
         SolveStatus.SOLVED,
@@ -63,6 +72,23 @@ class StartRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     puzzle_id: str
+    model_id: str = Field(default=DEFAULT_NEBIUS_MODEL, min_length=1, max_length=128)
+    reasoning_effort: Literal[
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    ] = "none"
+
+    @field_validator("model_id")
+    @classmethod
+    def validate_model_id(cls, value: str) -> str:
+        if value not in NEBIUS_MODEL_OPTIONS:
+            allowed = ", ".join(NEBIUS_MODEL_OPTIONS)
+            raise ValueError(f"Model must be one of: {allowed}")
+        return value
 
 
 class StartRunResponse(BaseModel):
@@ -73,6 +99,11 @@ class StartRunResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     provider: str
+
+
+class ModelCatalogResponse(BaseModel):
+    models: tuple[str, ...]
+    default: str
 
 
 class AnswerReviewEntry(BaseModel):
@@ -146,9 +177,35 @@ async def index() -> str:
     return files("crossword_agent").joinpath("static/index.html").read_text(encoding="utf-8")
 
 
+@app.get("/benchmarks", response_class=HTMLResponse)
+async def benchmark_page() -> str:
+    return files("crossword_agent").joinpath("static/benchmarks.html").read_text(
+        encoding="utf-8"
+    )
+
+
 @app.get("/api/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
-    return HealthResponse(status="ok", provider=os.getenv("LLM_PROVIDER", "bedrock"))
+    return HealthResponse(status="ok", provider="nebius")
+
+
+@app.get("/api/models", response_model=ModelCatalogResponse)
+async def models() -> ModelCatalogResponse:
+    return ModelCatalogResponse(
+        models=NEBIUS_MODEL_OPTIONS,
+        default=DEFAULT_NEBIUS_MODEL,
+    )
+
+
+@app.get("/api/benchmarks")
+async def benchmark_results() -> dict:
+    if not BENCHMARK_RESULTS_PATH.is_file():
+        raise HTTPException(status_code=404, detail="Benchmark results are not available yet")
+    try:
+        return json.loads(BENCHMARK_RESULTS_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        logger.exception("Benchmark result file is invalid")
+        raise HTTPException(status_code=500, detail="Benchmark results are invalid") from error
 
 
 @app.get("/api/puzzles/random", response_model=PublicPuzzle)
@@ -169,11 +226,19 @@ async def start_run(
         raise HTTPException(status_code=404, detail="Unknown puzzle ID") from error
     store = get_run_store(repository=repository)
     try:
-        record = store.create_run(request.puzzle_id)
+        record = store.create_run(
+            request.puzzle_id,
+            model_id=request.model_id,
+            reasoning_effort=request.reasoning_effort,
+        )
     except RunBusyError as error:
         logger.warning(
             "Run rejected because another solve is active",
-            extra={"puzzle_id": request.puzzle_id},
+            extra={
+                "puzzle_id": request.puzzle_id,
+                "model_id": request.model_id,
+                "reasoning_effort": request.reasoning_effort,
+            },
         )
         raise HTTPException(
             status_code=429,
@@ -183,7 +248,11 @@ async def start_run(
     except DailyQuotaExceededError as error:
         logger.warning(
             "Run rejected because the daily quota was reached",
-            extra={"puzzle_id": request.puzzle_id},
+            extra={
+                "puzzle_id": request.puzzle_id,
+                "model_id": request.model_id,
+                "reasoning_effort": request.reasoning_effort,
+            },
         )
         raise HTTPException(
             status_code=429,
@@ -192,14 +261,24 @@ async def start_run(
         ) from error
     logger.info(
         "Run created",
-        extra={"run_id": record.run_id, "puzzle_id": record.puzzle_id},
+        extra={
+            "run_id": record.run_id,
+            "puzzle_id": record.puzzle_id,
+            "model_id": record.model_id,
+            "reasoning_effort": record.reasoning_effort,
+        },
     )
     try:
         _dispatch_run(record, background_tasks)
     except Exception as error:  # noqa: BLE001
         logger.exception(
             "Unable to dispatch crossword worker",
-            extra={"run_id": record.run_id, "puzzle_id": record.puzzle_id},
+            extra={
+                "run_id": record.run_id,
+                "puzzle_id": record.puzzle_id,
+                "model_id": record.model_id,
+                "reasoning_effort": record.reasoning_effort,
+            },
         )
         failed = record.snapshot.model_copy(
             update={

@@ -24,6 +24,8 @@ class DailyQuotaExceededError(RuntimeError):
 class RunRecord(BaseModel):
     run_id: str
     puzzle_id: str
+    model_id: str | None = None
+    reasoning_effort: str = "none"
     status: SolveStatus
     snapshot: RunSnapshot
     created_at: int
@@ -33,7 +35,12 @@ class RunRecord(BaseModel):
 class RunStore(Protocol):
     def get_puzzle(self, puzzle_id: str) -> PuzzleDefinition: ...
 
-    def create_run(self, puzzle_id: str) -> RunRecord: ...
+    def create_run(
+        self,
+        puzzle_id: str,
+        model_id: str | None = None,
+        reasoning_effort: str = "none",
+    ) -> RunRecord: ...
 
     def get_run(self, run_id: str) -> RunRecord | None: ...
 
@@ -44,12 +51,18 @@ class RunStore(Protocol):
     def release_run(self, run_id: str) -> None: ...
 
 
-def _initial_record(puzzle: PuzzleDefinition, run_id: str | None = None) -> RunRecord:
+def _initial_record(
+    puzzle: PuzzleDefinition,
+    run_id: str | None = None,
+    model_id: str | None = None,
+    reasoning_effort: str = "none",
+) -> RunRecord:
     now = int(time.time())
     resolved_run_id = run_id or str(uuid.uuid4())
     snapshot = RunSnapshot(
         run_id=resolved_run_id,
         puzzle_id=puzzle.id,
+        model_id=model_id,
         status=SolveStatus.PENDING,
         grid=puzzle.template,
         unresolved_entries=tuple(entry.id for entry in puzzle.entries),
@@ -58,6 +71,8 @@ def _initial_record(puzzle: PuzzleDefinition, run_id: str | None = None) -> RunR
     return RunRecord(
         run_id=resolved_run_id,
         puzzle_id=puzzle.id,
+        model_id=model_id,
+        reasoning_effort=reasoning_effort,
         status=SolveStatus.PENDING,
         snapshot=snapshot,
         created_at=now,
@@ -82,7 +97,12 @@ class InMemoryRunStore:
     def get_puzzle(self, puzzle_id: str) -> PuzzleDefinition:
         return self._repository.get(puzzle_id).puzzle
 
-    def create_run(self, puzzle_id: str) -> RunRecord:
+    def create_run(
+        self,
+        puzzle_id: str,
+        model_id: str | None = None,
+        reasoning_effort: str = "none",
+    ) -> RunRecord:
         puzzle = self.get_puzzle(puzzle_id)
         day = datetime.now(UTC).date().isoformat()
         with self._lock:
@@ -90,7 +110,11 @@ class InMemoryRunStore:
                 raise RunBusyError("Another solve is already active")
             if self._daily_counts.get(day, 0) >= self._max_daily_runs:
                 raise DailyQuotaExceededError("Daily solve quota exhausted")
-            record = _initial_record(puzzle)
+            record = _initial_record(
+                puzzle,
+                model_id=model_id,
+                reasoning_effort=reasoning_effort,
+            )
             self._daily_counts[day] = self._daily_counts.get(day, 0) + 1
             self._active_run_id = record.run_id
             self._records[record.run_id] = record

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from crossword_agent.constraints import (
     count_constraint_violations,
     entry_pattern,
@@ -33,6 +35,24 @@ def test_validate_domain_enforces_length_pattern_and_deduplicates(demo_record) -
 
     assert [candidate.answer for candidate in validated] == ["CAT", "CAR"]
     assert validated[0].rank == 1
+
+
+def test_render_grid_can_display_conflicting_intermediate_assignments(demo_record) -> None:
+    conflicting = {
+        "1A": Candidate(answer="CAT"),
+        "1D": Candidate(answer="DOG"),
+    }
+
+    with pytest.raises(ValueError, match="Inconsistent assignment"):
+        render_grid(demo_record.puzzle, conflicting)
+
+    rendered = render_grid(
+        demo_record.puzzle,
+        conflicting,
+        tolerate_conflicts=True,
+    )
+
+    assert "?" in "".join(rendered)
 
 
 def test_weighted_search_finds_complete_consistent_solution(demo_record) -> None:

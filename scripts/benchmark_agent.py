@@ -18,13 +18,8 @@ from crossword_agent.config import load_local_env
 from crossword_agent.evaluation import PuzzleEvaluation, evaluate_records, load_normalized_dataset
 from crossword_agent.logging_config import configure_logging
 from crossword_agent.providers.base import CandidateProvider
-from crossword_agent.providers.bedrock import (
-    DEFAULT_BEDROCK_MODEL,
-    DEFAULT_BEDROCK_REGION,
-    BedrockCandidateProvider,
-)
 from crossword_agent.providers.nebius import DEFAULT_NEBIUS_MODEL, NebiusCandidateProvider
-from crossword_agent.runtime import create_clue_index, create_lexicon
+from crossword_agent.runtime import create_lexicon
 
 
 def main() -> None:
@@ -56,17 +51,7 @@ def _parse_args() -> argparse.Namespace:
         help="Number of independent puzzles to solve concurrently",
     )
     parser.add_argument("--seed", type=int, default=20260920)
-    parser.add_argument(
-        "--provider",
-        choices=("bedrock", "nebius"),
-        default=os.getenv("LLM_PROVIDER", "bedrock"),
-    )
     parser.add_argument("--model", help="Override the configured provider model ID")
-    parser.add_argument(
-        "--region",
-        default=os.getenv("BEDROCK_REGION", DEFAULT_BEDROCK_REGION),
-        help="Bedrock region; ignored for Nebius",
-    )
     parser.add_argument(
         "--output",
         type=Path,
@@ -87,20 +72,15 @@ async def _run(args: argparse.Namespace) -> None:
         count=args.count,
         seed=args.seed,
     )
-    model = _resolved_model(args.provider, args.model)
-    provider_factory = _provider_factory(
-        provider=args.provider,
-        model=model,
-        region=args.region,
-    )
+    model = _resolved_model(args.model)
+    provider_factory = _provider_factory(model)
     lexicon = create_lexicon()
-    clue_index = create_clue_index()
     results: list[PuzzleEvaluation] = []
     completed_count = 0
     benchmark_started = time.perf_counter()
 
     print(
-        f"Benchmarking {len(selected)} puzzles with {args.provider}/{model} "
+        f"Benchmarking {len(selected)} puzzles with nebius/{model} "
         f"({args.concurrency} concurrent puzzles)",
         flush=True,
     )
@@ -113,7 +93,7 @@ async def _run(args: argparse.Namespace) -> None:
             args.output,
             results=results,
             dataset=str(args.dataset.resolve()),
-            provider=args.provider,
+            provider="nebius",
             model=model,
             seed=args.seed,
             requested_puzzles=args.count,
@@ -136,7 +116,6 @@ async def _run(args: argparse.Namespace) -> None:
         provider_factory=provider_factory,
         mode="full",
         lexicon=lexicon,
-        clue_index=clue_index,
         max_concurrency=args.concurrency,
         on_result=on_result,
     )
@@ -154,26 +133,14 @@ async def _run(args: argparse.Namespace) -> None:
     )
 
 
-def _resolved_model(provider: str, override: str | None) -> str:
+def _resolved_model(override: str | None) -> str:
     if override:
         return override
-    if provider == "bedrock":
-        return os.getenv("BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL)
     return os.getenv("NEBIUS_MODEL_ID", DEFAULT_NEBIUS_MODEL)
 
 
-def _provider_factory(
-    *,
-    provider: str,
-    model: str,
-    region: str,
-):
+def _provider_factory(model: str):
     def create() -> CandidateProvider:
-        if provider == "bedrock":
-            return BedrockCandidateProvider(
-                model_id=model,
-                region_name=region,
-            )
         return NebiusCandidateProvider(
             model_id=model,
             api_key=os.getenv("NEBIUS_API_KEY"),

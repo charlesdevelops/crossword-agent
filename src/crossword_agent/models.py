@@ -81,7 +81,6 @@ class Candidate(BaseModel):
     answer: str
     rank: int = Field(default=1, ge=1)
     lexical_score: float = Field(default=0.0, ge=0.0, le=1.0)
-    retrieval_score: float = Field(default=0.0, ge=0.0, le=1.0)
     source: str = "model"
 
     @computed_field
@@ -92,8 +91,7 @@ class Candidate(BaseModel):
         corroboration = min(1.0, max(0, len(sources) - 1) / 2)
         return (
             0.70 * (1.0 / self.rank)
-            + 0.15 * self.retrieval_score
-            + 0.05 * self.lexical_score
+            + 0.20 * self.lexical_score
             + 0.07 * verifier_support
             + 0.03 * corroboration
         )
