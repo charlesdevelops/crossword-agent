@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import os
 import threading
 import time
 import uuid
-from datetime import UTC, datetime
 from typing import Protocol
 
 from pydantic import BaseModel
@@ -14,10 +12,6 @@ from crossword_agent.puzzles import PuzzleRepository
 
 
 class RunBusyError(RuntimeError):
-    pass
-
-
-class DailyQuotaExceededError(RuntimeError):
     pass
 
 
@@ -84,14 +78,11 @@ class InMemoryRunStore:
     def __init__(
         self,
         *,
-        max_daily_runs: int = 10,
         repository: PuzzleRepository | None = None,
     ) -> None:
-        self._max_daily_runs = max_daily_runs
         self._repository = repository or PuzzleRepository.configured()
         self._records: dict[str, RunRecord] = {}
         self._active_run_id: str | None = None
-        self._daily_counts: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def get_puzzle(self, puzzle_id: str) -> PuzzleDefinition:
@@ -104,18 +95,14 @@ class InMemoryRunStore:
         reasoning_effort: str = "none",
     ) -> RunRecord:
         puzzle = self.get_puzzle(puzzle_id)
-        day = datetime.now(UTC).date().isoformat()
         with self._lock:
             if self._active_run_id is not None:
                 raise RunBusyError("Another solve is already active")
-            if self._daily_counts.get(day, 0) >= self._max_daily_runs:
-                raise DailyQuotaExceededError("Daily solve quota exhausted")
             record = _initial_record(
                 puzzle,
                 model_id=model_id,
                 reasoning_effort=reasoning_effort,
             )
-            self._daily_counts[day] = self._daily_counts.get(day, 0) + 1
             self._active_run_id = record.run_id
             self._records[record.run_id] = record
             return record.model_copy(deep=True)
@@ -154,11 +141,7 @@ _store: RunStore | None = None
 def get_run_store(*, repository: PuzzleRepository | None = None) -> RunStore:
     global _store
     if _store is None:
-        max_daily_runs = int(os.getenv("MAX_DAILY_RUNS", "10"))
-        _store = InMemoryRunStore(
-            max_daily_runs=max_daily_runs,
-            repository=repository,
-        )
+        _store = InMemoryRunStore(repository=repository)
     return _store
 
 

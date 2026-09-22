@@ -21,7 +21,7 @@ async def test_worker_claims_updates_and_releases_run(monkeypatch) -> None:
             for entry_id, answer in gold.items()
         }
     )
-    store = InMemoryRunStore(max_daily_runs=2, repository=repository)
+    store = InMemoryRunStore(repository=repository)
     run = store.create_run(record.puzzle.id)
     monkeypatch.setattr(
         worker_module,

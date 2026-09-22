@@ -2,16 +2,15 @@ import pytest
 
 from crossword_agent.puzzles import PuzzleRepository
 from crossword_agent.storage import (
-    DailyQuotaExceededError,
     InMemoryRunStore,
     RunBusyError,
 )
 
 
-def test_store_enforces_global_lock_and_daily_quota() -> None:
+def test_store_enforces_one_active_run() -> None:
     repository = PuzzleRepository.bundled()
     puzzle_id = repository.all()[0].puzzle.id
-    store = InMemoryRunStore(max_daily_runs=1, repository=repository)
+    store = InMemoryRunStore(repository=repository)
 
     first = store.create_run(puzzle_id)
     assert first.reasoning_effort == "none"
@@ -19,8 +18,8 @@ def test_store_enforces_global_lock_and_daily_quota() -> None:
         store.create_run(puzzle_id)
 
     store.release_run(first.run_id)
-    with pytest.raises(DailyQuotaExceededError):
-        store.create_run(puzzle_id)
+    second = store.create_run(puzzle_id)
+    assert second.status.value == "PENDING"
 
 
 def test_claim_is_idempotent() -> None:

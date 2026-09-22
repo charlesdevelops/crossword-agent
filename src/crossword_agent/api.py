@@ -29,7 +29,6 @@ from crossword_agent.providers.nebius import (
 )
 from crossword_agent.puzzles import PuzzleRepository
 from crossword_agent.storage import (
-    DailyQuotaExceededError,
     RunBusyError,
     RunRecord,
     get_run_store,
@@ -244,20 +243,6 @@ async def start_run(
             status_code=429,
             detail={"message": str(error), "retry_after": 5},
             headers={"Retry-After": "5"},
-        ) from error
-    except DailyQuotaExceededError as error:
-        logger.warning(
-            "Run rejected because the daily quota was reached",
-            extra={
-                "puzzle_id": request.puzzle_id,
-                "model_id": request.model_id,
-                "reasoning_effort": request.reasoning_effort,
-            },
-        )
-        raise HTTPException(
-            status_code=429,
-            detail={"message": str(error), "retry_after": 3600},
-            headers={"Retry-After": "3600"},
         ) from error
     logger.info(
         "Run created",
